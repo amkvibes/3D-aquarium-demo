@@ -108,7 +108,7 @@ export function wallSteering(pos, vel, lookAhead) {
     if (wall.gaps.some(([lo, hi]) => crossParal > lo && crossParal < hi)) continue;
 
     // Ramp: full strength inside ONSET, falls off to 0 at lookAhead distance
-    const ONSET = 1.2;
+    const ONSET = 1.5;
     const t = absDist <= ONSET
       ? 1.0
       : 1.0 - (absDist - ONSET) / Math.max(lookAhead - ONSET, 0.01);
@@ -127,7 +127,7 @@ export function wallSteering(pos, vel, lookAhead) {
 }
 
 // ── Hard clamp ────────────────────────────────────────────────────────────────
-const HARD = 0.40;   // minimum clearance from any wall face
+const HARD = 0.52;   // minimum clearance from any wall centre (~0.36 from face)
 
 /**
  * Pushes a fish that has penetrated a wall back to a safe position and damps

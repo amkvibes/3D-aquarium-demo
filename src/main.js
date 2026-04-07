@@ -3,7 +3,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { fishVertexShader, fishFragmentShader } from './fishShaders.js';
 import { buildHouse, HOUSE_BOUNDS, WALL_H } from './house.js';
 import { buildCaustics, buildWaterSurface, buildBubbles, updateEffects } from './effects.js';
-import { loadProps } from './props.js';
+import { buildFurniture } from './furniture.js';
 import { wallSteering, hardWallClamp } from './navigation.js';
 
 // ─── Renderer ────────────────────────────────────────────────────────────────
@@ -62,12 +62,14 @@ buildWaterSurface(scene);
 buildBubbles(scene);
 
 // ─── Fish type definitions ────────────────────────────────────────────────────
+// swimSpeed is the BASE — each fish instance multiplies by a random factor for variety.
+// Big fish are slow and majestic; small fish dart quickly.
 const FISH_TYPES = {
-  BigFishA:    { fishLength: 10, fishWaveLength: -1,   fishBendAmount: 0.5,  tailSpeed: 1.5,  swimSpeed: 2.2, turnRate: 0.8,  scale: 0.25 },
-  BigFishB:    { fishLength: 10, fishWaveLength: -0.7, fishBendAmount: 0.3,  tailSpeed: 1.0,  swimSpeed: 2.6, turnRate: 0.8,  scale: 0.25 },
-  MediumFishA: { fishLength: 10, fishWaveLength: -2,   fishBendAmount: 2.0,  tailSpeed: 1.0,  swimSpeed: 4.0, turnRate: 2.0,  scale: 0.60 },
-  MediumFishB: { fishLength: 10, fishWaveLength: -2,   fishBendAmount: 2.0,  tailSpeed: 3.0,  swimSpeed: 3.5, turnRate: 2.0,  scale: 0.80 },
-  SmallFishA:  { fishLength: 10, fishWaveLength: 1,    fishBendAmount: 2.0,  tailSpeed: 10.0, swimSpeed: 6.0, turnRate: 4.5,  scale: 1.50 },
+  BigFishA:    { fishLength: 10, fishWaveLength: -1,   fishBendAmount: 0.5,  tailSpeed: 1.5,  swimSpeed: 2.0, turnRate: 0.9,  scale: 0.25 },
+  BigFishB:    { fishLength: 10, fishWaveLength: -0.7, fishBendAmount: 0.3,  tailSpeed: 1.0,  swimSpeed: 2.2, turnRate: 0.9,  scale: 0.25 },
+  MediumFishA: { fishLength: 10, fishWaveLength: -2,   fishBendAmount: 2.0,  tailSpeed: 1.0,  swimSpeed: 3.5, turnRate: 2.2,  scale: 0.60 },
+  MediumFishB: { fishLength: 10, fishWaveLength: -2,   fishBendAmount: 2.0,  tailSpeed: 3.0,  swimSpeed: 3.2, turnRate: 2.2,  scale: 0.80 },
+  SmallFishA:  { fishLength: 10, fishWaveLength: 1,    fishBendAmount: 2.0,  tailSpeed: 10.0, swimSpeed: 5.5, turnRate: 5.0,  scale: 1.50 },
 };
 
 const SCHOOL_CONFIG = [
@@ -237,15 +239,33 @@ async function spawnSchool() {
       const vel       = randomDir();
       const facingDir = vel.clone();
 
+      // Wide per-fish speed spread: big fish 0.5–1.1×, small fish 0.7–1.6×
+      const isBig   = type.startsWith('Big');
+      const isSmall = type.startsWith('Small');
+      const speedMult = isBig
+        ? randFloat(0.5, 1.1)
+        : isSmall
+          ? randFloat(0.7, 1.6)
+          : randFloat(0.6, 1.4);
+      const baseSpeed = tp.swimSpeed * speedMult;
+
       school.push({
         mesh,
         pos,
         vel,
         facingDir,
-        swimSpeed:  tp.swimSpeed  * randFloat(0.8, 1.2),
-        tailSpeed:  tp.tailSpeed,
-        turnRate:   tp.turnRate,
-        timeOffset: Math.random() * Math.PI * 2,
+        swimSpeed:    baseSpeed,
+        currentSpeed: baseSpeed,          // actual speed — varies during pauses
+        tailSpeed:    tp.tailSpeed  * randFloat(0.75, 1.30),
+        turnRate:     tp.turnRate,
+        timeOffset:   Math.random() * Math.PI * 2,
+        // Wandering (gentle sinusoidal meander)
+        wanderFreq:   randFloat(0.3, 1.1),
+        wanderPhase:  Math.random() * Math.PI * 2,
+        wanderAmt:    randFloat(0.35, 1.1),  // lateral force amplitude (dt-scaled in loop)
+        // Pausing
+        pauseTimer:    0,
+        pauseChance:   randFloat(0.0001, 0.0004),  // per-frame probability
       });
 
       scene.add(mesh);
@@ -268,26 +288,53 @@ function animate() {
 
   // Fish movement & animation
   for (const fish of school) {
-    // ── 1. Wall-avoidance steering ──────────────────────────────────────────
-    // Look-ahead scales with swim speed so faster fish start turning earlier.
-    const lookAhead = 2.8 + fish.swimSpeed * 0.28;
-    const steer = wallSteering(fish.pos, fish.vel, lookAhead);
-    const steerMag = steer.length();
-    if (steerMag > 0.001) {
-      // Blend velocity toward avoidance direction.
-      // Alpha: stronger when closer (larger steerMag) and for nimble fish (high turnRate).
-      const alpha = Math.min(1.0, fish.turnRate * steerMag * dt * 5.0);
-      fish.vel.lerp(steer.normalize(), alpha).normalize();
+
+    // ── 1. Wander — gentle sinusoidal meander perpendicular to travel ───────
+    // Computed before wall steering so walls can override it cleanly.
+    {
+      const lateral = Math.sin(t * fish.wanderFreq + fish.wanderPhase) * fish.wanderAmt * dt;
+      const px = -fish.vel.z;   // perpendicular to vel in XZ plane
+      const pz =  fish.vel.x;
+      fish.vel.x += px * lateral;
+      fish.vel.z += pz * lateral;
+      fish.vel.normalize();
     }
 
-    // ── 2. Move ─────────────────────────────────────────────────────────────
-    fish.pos.addScaledVector(fish.vel, fish.swimSpeed * dt);
+    // ── 2. Wall-avoidance steering ──────────────────────────────────────────
+    // lookAhead scales with speed so fast fish react earlier.
+    {
+      const lookAhead = 3.0 + fish.swimSpeed * 0.30;
+      const steer = wallSteering(fish.pos, fish.vel, lookAhead);
+      const steerMag = steer.length();
+      if (steerMag > 0.001) {
+        const alpha = Math.min(1.0, fish.turnRate * steerMag * dt * 6.0);
+        fish.vel.lerp(steer.normalize(), alpha).normalize();
+      }
+    }
 
-    // ── 3. Boundary enforcement ─────────────────────────────────────────────
-    bounceInHouse(fish.pos, fish.vel);   // outer L-shape (hard fallback)
-    hardWallClamp(fish.pos, fish.vel);   // inner walls   (hard fallback)
+    // ── 3. Pause / speed management ─────────────────────────────────────────
+    if (fish.pauseTimer > 0) {
+      fish.pauseTimer -= dt;
+      // Slow to near-stop smoothly
+      fish.currentSpeed = Math.max(0.05, fish.currentSpeed - fish.swimSpeed * dt * 2.5);
+    } else {
+      // Ramp back to full speed
+      fish.currentSpeed = Math.min(fish.swimSpeed,
+        fish.currentSpeed + fish.swimSpeed * dt * 1.2);
+      // Random chance to start a pause
+      if (Math.random() < fish.pauseChance) {
+        fish.pauseTimer = randFloat(0.6, 2.8);
+      }
+    }
 
-    // ── 4. Visual orientation ───────────────────────────────────────────────
+    // ── 4. Move ─────────────────────────────────────────────────────────────
+    fish.pos.addScaledVector(fish.vel, fish.currentSpeed * dt);
+
+    // ── 5. Hard boundary enforcement ────────────────────────────────────────
+    bounceInHouse(fish.pos, fish.vel);   // outer L-shape
+    hardWallClamp(fish.pos, fish.vel);   // inner walls
+
+    // ── 6. Visual orientation ───────────────────────────────────────────────
     fish.facingDir.lerp(fish.vel, Math.min(1, fish.turnRate * dt)).normalize();
 
     fish.mesh.position.copy(fish.pos);
@@ -296,9 +343,9 @@ function animate() {
       Math.max(-0.9, Math.min(0.9, fish.facingDir.y)),
     );
 
-    // ── 5. Shader time ──────────────────────────────────────────────────────
-    fish.mesh.material.uniforms.time.value =
-      t * fish.tailSpeed + fish.timeOffset;
+    // ── 7. Tail animation — speed follows currentSpeed so paused fish slow down
+    const animSpeed = fish.tailSpeed * (fish.currentSpeed / Math.max(fish.swimSpeed, 0.01));
+    fish.mesh.material.uniforms.time.value = t * animSpeed + fish.timeOffset;
   }
 
   // Caustics, water surface, bubbles
@@ -309,9 +356,7 @@ function animate() {
 }
 
 // ─── Boot ─────────────────────────────────────────────────────────────────────
-Promise.all([
-  spawnSchool(),
-  loadProps(scene),
-]).catch(console.error);
+buildFurniture(scene);      // synchronous — pure geometry, no asset loading
+spawnSchool().catch(console.error);
 
 animate();
