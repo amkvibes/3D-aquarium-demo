@@ -112,7 +112,7 @@ const textureLoader = new THREE.TextureLoader();
 function loadTex(filename, srgb = true) {
   return new Promise((resolve) => {
     textureLoader.load(
-      `/assets/${filename}`,
+      `${import.meta.env.BASE_URL}assets/${filename}`,
       (t) => {
         t.colorSpace = srgb ? THREE.SRGBColorSpace : THREE.LinearSRGBColorSpace;
         resolve(t);
@@ -124,7 +124,7 @@ function loadTex(filename, srgb = true) {
 }
 
 async function loadFishAsset(name) {
-  const res  = await fetch(`/assets/${name}.js`);
+  const res  = await fetch(`${import.meta.env.BASE_URL}assets/${name}.js`);
   const json = await res.json();
   const { fields, textures } = json.models[0];
 

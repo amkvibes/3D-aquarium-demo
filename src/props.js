@@ -12,7 +12,7 @@ const texLoader = new THREE.TextureLoader();
 function loadTex(filename, srgb = true) {
   return new Promise(resolve => {
     texLoader.load(
-      `/assets/${filename}`,
+      `${import.meta.env.BASE_URL}assets/${filename}`,
       t => { if (srgb) t.colorSpace = THREE.SRGBColorSpace; resolve(t); },
       undefined,
       () => resolve(null),
@@ -22,7 +22,7 @@ function loadTex(filename, srgb = true) {
 
 // Parse one asset JSON, return array of { geo, mat } (one per sub-mesh/model)
 async function loadProp(name) {
-  const res  = await fetch(`/assets/${name}.js`);
+  const res  = await fetch(`${import.meta.env.BASE_URL}assets/${name}.js`);
   const json = await res.json();
 
   return Promise.all(json.models.map(async ({ fields, textures }) => {
