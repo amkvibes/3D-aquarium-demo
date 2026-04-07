@@ -122,15 +122,17 @@ export function buildHouse(scene) {
   const [r0, r1, r2, r3] = R;  // -19, -5, 9, 19
 
   // ── Floors — bright turquoise/aqua pool tones ─────────────────────────────
+  // Slightly darker teal — no caustic overlay means the floor itself carries
+  // the "underwater" read.  ~25% darker than the previous bright values.
   const fColors = [
-    0x55d5d2,  // R1  Living Room
-    0x4dcfcc,  // R2  Kitchen
-    0x59d8d5,  // R3  Master Bedroom
-    0x4fcaca,  // R4  Master Bathroom
-    0x52d2cf,  // R5  Bedroom 2
-    0x47c8c5,  // R6  Bedroom 3
-    0x51ccca,  // R7  Hallway / Bathroom
-    0x4dcece,  // R8  Office
+    0x2eabaa,  // R1  Living Room
+    0x28a5a3,  // R2  Kitchen
+    0x31aeac,  // R3  Master Bedroom
+    0x2aa5a4,  // R4  Master Bathroom
+    0x2da8a6,  // R5  Bedroom 2
+    0x25a09f,  // R6  Bedroom 3
+    0x2aa4a2,  // R7  Hallway / Bathroom
+    0x28a3a3,  // R8  Office
   ];
 
   const floorPairs = [

@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { fishVertexShader, fishFragmentShader } from './fishShaders.js';
 import { buildHouse, HOUSE_BOUNDS, WALL_H } from './house.js';
-import { buildCaustics, buildWaterSurface, buildBubbles, updateEffects } from './effects.js';
+import { buildWaterSurface, buildBubbles, updateEffects } from './effects.js';
 import { buildFurniture } from './furniture.js';
 import { wallSteering, hardWallClamp } from './navigation.js';
 
@@ -57,7 +57,6 @@ scene.add(fillLight);
 buildHouse(scene);
 
 // ─── Underwater effects ───────────────────────────────────────────────────────
-buildCaustics(scene);
 buildWaterSurface(scene);
 buildBubbles(scene);
 
