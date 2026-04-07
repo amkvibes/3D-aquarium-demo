@@ -109,11 +109,15 @@ function createFishMaterial(diffuseMap, normalMapTex, params) {
 // ─── Asset loader ──────────────────────────────────────────────────────────────
 const textureLoader = new THREE.TextureLoader();
 
-function loadTex(filename) {
+// srgb=true for diffuse/colour maps, false for normal maps (must stay linear)
+function loadTex(filename, srgb = true) {
   return new Promise((resolve) => {
     textureLoader.load(
       `/assets/${filename}`,
-      (t) => { t.colorSpace = THREE.SRGBColorSpace; resolve(t); },
+      (t) => {
+        t.colorSpace = srgb ? THREE.SRGBColorSpace : THREE.LinearSRGBColorSpace;
+        resolve(t);
+      },
       undefined,
       () => resolve(null),
     );
@@ -139,8 +143,8 @@ async function loadFishAsset(name) {
   geo.translate(-center.x, -center.y, -center.z);
 
   const [diffuseMap, normalMapTex] = await Promise.all([
-    textures.diffuse   ? loadTex(textures.diffuse)   : Promise.resolve(null),
-    textures.normalMap ? loadTex(textures.normalMap) : Promise.resolve(null),
+    textures.diffuse   ? loadTex(textures.diffuse,   true)  : Promise.resolve(null),
+    textures.normalMap ? loadTex(textures.normalMap,  false) : Promise.resolve(null),
   ]);
 
   return { geo, diffuseMap, normalMapTex };
@@ -206,15 +210,43 @@ function bounceInHouse(pos, vel) {
   }
 }
 
+// ─── Loading screen helpers ───────────────────────────────────────────────────
+const _fill = document.getElementById('loading-fill');
+const _pct  = document.getElementById('loading-pct');
+
+function setLoadProgress(fraction) {
+  const pct = Math.round(fraction * 100);
+  if (_fill) _fill.style.width = pct + '%';
+  if (_pct)  _pct.textContent  = pct + '%';
+}
+
+function hideLoadingScreen() {
+  const el = document.getElementById('loading');
+  if (!el) return;
+  el.classList.add('fade-out');
+  el.addEventListener('transitionend', () => el.remove(), { once: true });
+}
+
 // ─── School state ─────────────────────────────────────────────────────────────
 const school = [];
 
 async function spawnSchool() {
   const assetNames = [...new Set(SCHOOL_CONFIG.map(c => c.type))];
+  const total = assetNames.length;
+  let loaded = 0;
+
+  setLoadProgress(0.05);   // show immediate progress so bar isn't blank
+
   const assets = Object.fromEntries(
-    await Promise.all(assetNames.map(async n => [n, await loadFishAsset(n)])),
+    await Promise.all(
+      assetNames.map(async n => {
+        const asset = await loadFishAsset(n);
+        loaded++;
+        setLoadProgress(0.05 + (loaded / total) * 0.90);
+        return [n, asset];
+      }),
+    ),
   );
-  console.log('All fish assets loaded');
 
   const spawnedPositions = [];
   const MIN_SEP = 4.5;
@@ -272,7 +304,9 @@ async function spawnSchool() {
     }
   }
 
-  console.log(`School ready: ${school.length} fish`);
+  setLoadProgress(1.0);
+  // Short delay so the bar reaches 100% visibly before fading
+  setTimeout(hideLoadingScreen, 300);
 }
 
 // ─── Animation loop ───────────────────────────────────────────────────────────
