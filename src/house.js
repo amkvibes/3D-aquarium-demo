@@ -116,6 +116,17 @@ function wallZWindows(scene, x, z1, z2, winCzs) {
   if (cursor < z2) box(scene, x, WALL_H / 2, (cursor + z2) / 2, WALL_T, WALL_H, z2 - cursor);
 }
 
+// ── Water volume material — exported so effects.js can animate its colour ─────
+export const waterMat = new THREE.MeshStandardMaterial({
+  color:       0x7fdbda,
+  transparent: true,
+  opacity:     0.30,
+  side:        THREE.FrontSide,
+  depthWrite:  false,
+  roughness:   0.0,
+  metalness:   0.0,
+});
+
 // ── House builder ─────────────────────────────────────────────────────────────
 export function buildHouse(scene) {
   const [c0, c1, c2, c3] = C;  // -19, -5, 7, 19
@@ -152,15 +163,7 @@ export function buildHouse(scene) {
 
   // ── Water volumes — semi-transparent turquoise fill, one per room ────────
   // Inset 0.28 units from each wall face to avoid z-fighting.
-  const waterMat = new THREE.MeshStandardMaterial({
-    color:       0x7fdbda,
-    transparent: true,
-    opacity:     0.28,
-    side:        THREE.FrontSide,
-    depthWrite:  false,
-    roughness:   0.0,
-    metalness:   0.0,
-  });
+  // waterMat is exported at module level so effects.js can shimmer its colour.
   const INS = 0.28;  // inset from walls
   const waterRooms = [
     [c0, r0, c1, r1],  // R1

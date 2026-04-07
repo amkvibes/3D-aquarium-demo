@@ -6,7 +6,7 @@
  *   updateEffects(t, dt)      — call every frame
  */
 import * as THREE from 'three';
-import { WALL_H } from './house.js';
+import { WALL_H, waterMat } from './house.js';
 
 // Room layout matching house.js grid (C=[-19,-5,7,19], R=[-19,-5,9,19])
 // [centerX, centerZ, width, depth]
@@ -24,9 +24,16 @@ const ROOMS = [
 // All time { value } handles to update in one sweep
 const timeUniforms = [];
 
+// Base colour components for the water volume shimmer (0x7fdbda)
+const _wR = 0x7f / 255, _wG = 0xdb / 255, _wB = 0xda / 255;
+
 export function updateEffects(t, dt) {
   for (const u of timeUniforms) u.value = t;
   _updateBubbles(t, dt);
+
+  // ── Water volume shimmer — two slow sine layers, ±2% brightness swing ───
+  const s = Math.sin(t * 0.38) * 0.018 + Math.sin(t * 0.67 + 1.1) * 0.010;
+  waterMat.color.setRGB(_wR + s, _wG + s * 0.7, _wB + s * 0.5);
 }
 
 // ── Caustics ──────────────────────────────────────────────────────────────────
@@ -97,12 +104,18 @@ varying float v_wave;
 
 void main() {
   vec3 p = position;
-  float w =  sin(p.x * 0.65 + time * 1.20) * 0.14
-           + sin(p.z * 0.50 + time * 0.95 + 0.9) * 0.09
-           + sin((p.x * 0.40 + p.z * 0.60) + time * 0.75) * 0.07
-           + sin((p.x - p.z) * 0.30 + time * 1.50) * 0.04;
+
+  // Four sine waves tuned for a calm indoor pool:
+  //   - low spatial frequency  → wide, smooth peaks (not choppy)
+  //   - slow temporal speed    → wave period ~8-12 s, very gentle
+  //   - amplitudes large enough to read from an isometric camera
+  float w =  sin(p.x * 0.52 + time * 0.68) * 0.22
+           + sin(p.z * 0.40 + time * 0.54 + 1.1) * 0.16
+           + sin((p.x * 0.30 + p.z * 0.44) + time * 0.42) * 0.11
+           + sin((p.x * 0.62 - p.z * 0.28) + time * 0.82) * 0.06;
   p.y += w;
-  v_wave = w * 3.0 + 0.5;
+  // Normalise to [0,1] — total range is roughly ±0.55
+  v_wave = clamp(w * 0.90 + 0.50, 0.0, 1.0);
   gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);
 }
 `;
@@ -111,12 +124,13 @@ const waterFrag = /* glsl */ `
 varying float v_wave;
 
 void main() {
-  float w = clamp(v_wave, 0.0, 1.0);
-  // Bright Caribbean turquoise — pool-water look
-  vec3 deep  = vec3(0.35, 0.82, 0.80);
-  vec3 crest = vec3(0.75, 0.97, 0.95);
-  vec3 col   = mix(deep, crest, w);
-  gl_FragColor = vec4(col, 0.18 + w * 0.12);
+  // Deep teal at troughs, bright cyan at crests
+  vec3 deep  = vec3(0.20, 0.70, 0.74);
+  vec3 crest = vec3(0.65, 0.95, 0.96);
+  vec3 col   = mix(deep, crest, smoothstep(0.25, 0.80, v_wave));
+  // Base opacity 0.38; crests add up to 0.20 more → clearly visible surface
+  float alpha = 0.38 + v_wave * 0.20;
+  gl_FragColor = vec4(col, alpha);
 }
 `;
 
