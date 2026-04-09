@@ -66,6 +66,9 @@ export const fishFragmentShader = /* glsl */ `
 uniform sampler2D diffuseMap;
 uniform sampler2D normalMapTex;
 
+// ── Tropical colour tint (per-fish, multiplied onto the diffuse) ─────────────
+uniform vec3 tintColor;
+
 // ── Blinn-Phong lighting (matches original aquarium fragment shader) ─────────
 uniform vec4  lightColor;
 uniform vec4  ambient;
@@ -91,6 +94,9 @@ vec4 lit(float l, float h, float m) {
 
 void main() {
   vec4 diffuseColor = texture2D(diffuseMap, v_uv);
+  // Multiply tint onto the diffuse — preserves texture detail while shifting hue.
+  // tintColor values > 1.0 boost brightness so even mid-tones become vivid.
+  diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * tintColor, 0.82);
 
   // Tangent-space normal map → world space (original aquarium technique)
   mat3 tangentToWorld = mat3(v_worldTangent, v_worldBinormal, v_worldNormal);
