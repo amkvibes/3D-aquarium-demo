@@ -35,7 +35,7 @@ controls.target.set(0, WALL_H / 2, 0);
 controls.enableDamping    = true;
 controls.dampingFactor    = 0.06;
 controls.autoRotate       = false;
-controls.minDistance      = 15;
+controls.minDistance      = 1;
 controls.maxDistance      = 130;
 controls.maxPolarAngle    = Math.PI * 0.78;
 
